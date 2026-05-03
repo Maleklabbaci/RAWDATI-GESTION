@@ -62,6 +62,8 @@ interface DataContextType {
   approveNursery: (id: string) => void;
   registerNursery: (data: any) => void;
   loginAsNursery: (nursery: any) => void;
+  replyToMessage: (messageId: number, replyText: string) => void;
+  archiveMessage: (id: number) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -169,12 +171,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [supportMessages, setSupportMessages] = useState<any[]>(() => {
     const saved = localStorage.getItem('rawdati_support_messages');
     return saved ? JSON.parse(saved) : [
-      { id: 1, senderId: '1', senderName: 'Karim Benali', subject: 'Paiement effectué', message: 'J\'ai envoyé le virement pour le mois de Juin.', date: '2026-05-19' }
+      { id: 1, senderId: '1', senderName: 'Karim Benali', subject: 'Paiement effectué', message: 'J\'ai envoyé le virement pour le mois de Juin.', date: '2026-05-19', status: 'Open', replies: [] }
     ];
   });
 
   const sendSupportMessage = (msg: any) => {
-    setSupportMessages(prev => [{ ...msg, id: Date.now(), date: new Date().toISOString().split('T')[0] }, ...prev]);
+    const newMsg = { 
+      ...msg, 
+      id: Date.now(), 
+      date: new Date().toISOString().split('T')[0],
+      status: 'Open',
+      replies: [] 
+    };
+    setSupportMessages(prev => [newMsg, ...prev]);
+    addNotification({ title: 'Nouveau Message', message: `Message reçu de ${msg.senderName}` });
+  };
+
+  const replyToMessage = (messageId: number, replyText: string) => {
+    setSupportMessages(prev => prev.map(msg => {
+      if (msg.id === messageId) {
+        return {
+          ...msg,
+          replies: [...(msg.replies || []), {
+            id: Date.now(),
+            text: replyText,
+            date: new Date().toISOString().split('T')[0],
+            sender: 'Master Admin'
+          }]
+        };
+      }
+      return msg;
+    }));
+  };
+
+  const archiveMessage = (id: number) => {
+    setSupportMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'Archived' } : m));
   };
 
   const approveNursery = (id: string) => {
@@ -318,22 +349,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('rawdati_notifications', JSON.stringify(notifications));
   }, [children, staff, absences, payments, activities, meals, classes, settings, notifications]);
 
-  const addChild = (child: Child) => {
-    setChildren([...children, child]);
+  const addChild = async (child: Child) => {
+    setChildren(prev => [...prev, child]);
     addNotification({ title: 'Nouvelle Inscription', message: `${child.firstName} a été enregistré.` });
+    if (supabase) {
+      try { await db.addChild({ ...child, nursery_id: user?.id } as any); } catch (e) { console.error(e); }
+    }
   };
 
-  const registerNursery = (data: any) => {
+  const registerNursery = async (data: any) => {
     const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 7); // 7 days free trial
+    expiryDate.setDate(expiryDate.getDate() + 7);
     
     const newNursery = {
       ...data,
       id: Date.now().toString(),
-      status: 'Active', // Active immediately for the trial
+      status: 'Active',
       plan: 'Trial',
       students: 0,
-      expiry: expiryDate.toISOString().split('T')[0]
+      expiry: expiryDate.toISOString().split('T')[0],
+      password: data.password || 'nursery123'
     };
     
     setNurseries(prev => [newNursery, ...prev]);
@@ -341,10 +376,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: 'Nouveau Client', 
       message: `La crèche ${data.name} s'est inscrite (Essai 7j).` 
     });
+    
+    if (supabase) {
+      try { 
+        // Supabase nursery sync logic could go here
+      } catch (e) { console.error(e); }
+    }
   };
-  const updateChild = (id: string, data: Partial<Child>) => 
-    setChildren(children.map(c => c.id === id ? { ...c, ...data } : c));
-  const deleteChild = (id: string) => setChildren(children.filter(c => c.id !== id));
+
+  const updateChild = async (id: string, data: Partial<Child>) => {
+    setChildren(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    if (supabase) try { await db.updateChild(id, data); } catch (e) { console.error(e); }
+  };
+
+  const deleteChild = async (id: string) => {
+    setChildren(prev => prev.filter(c => c.id !== id));
+    if (supabase) try { await db.deleteChild(id); } catch (e) { console.error(e); }
+  };
 
   const addStaff = (member: Staff) => setStaff([...staff, member]);
   const updateStaff = (id: string, data: Partial<Staff>) =>
@@ -429,7 +477,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notifications, addNotification, clearNotifications,
       settings, updateSettings, t,
       user, login, logout,
-      nurseries, approveNursery, updateNurserySub, supportMessages, sendSupportMessage, registerNursery, loginAsNursery
+      nurseries, approveNursery, updateNurserySub, supportMessages, sendSupportMessage, registerNursery, loginAsNursery,
+      replyToMessage, archiveMessage
     }}>
       {childrenProp}
     </DataContext.Provider>

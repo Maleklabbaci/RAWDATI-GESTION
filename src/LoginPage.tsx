@@ -10,8 +10,9 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSignUp }) => {
   const { login, t } = useData();
-  const [email, setEmail] = useState('admin@creche.dz');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState(() => localStorage.getItem('remember_email') || '');
+  const [password, setPassword] = useState(() => localStorage.getItem('remember_password') || '');
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('remember_email'));
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,6 +22,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSignUp }) => {
     setIsLoading(true);
     setError('');
     
+    if (rememberMe) {
+      localStorage.setItem('remember_email', email);
+      localStorage.setItem('remember_password', password);
+    } else {
+      localStorage.removeItem('remember_email');
+      localStorage.removeItem('remember_password');
+    }
+
     const success = await login({ email, password });
     if (!success) {
       setError(t('invalid_credentials'));
@@ -102,7 +111,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSignUp }) => {
 
             <div className="flex items-center justify-between px-1">
               <label className="flex items-center gap-3 cursor-pointer group">
-                <input type="checkbox" className="w-5 h-5 rounded-lg border-[#E2E8F0] text-indigo-600 focus:ring-indigo-600/20 transition-all" defaultChecked />
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-5 h-5 rounded-lg border-[#E2E8F0] text-indigo-600 focus:ring-indigo-600/20 transition-all" 
+                />
                 <span className="text-xs font-bold text-[#64748B] group-hover:text-[#1A1C1E] transition-colors">{t('remember_me')}</span>
               </label>
               <a href="#" className="text-xs font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-widest">{t('forgot_password')}</a>
